@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "SPEECH — Comment Anywhere",
+  "version": "0.1.0",
+  "description": "An open comment layer over any website. See what people really think about the page you're on, and say what you think.",
+  "permissions": ["storage", "alarms"],
+  "host_permissions": ["https://*.supabase.co/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
