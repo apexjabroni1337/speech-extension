@@ -42,5 +42,7 @@ textarea { min-height: 56px; resize: vertical; }
 .weblink { color: #4f46e5; font-size: 12px; text-decoration: none; }
 .weblink:hover { text-decoration: underline; }
 .star { font-size: 11px; cursor: default; }
+.gname { cursor: pointer; }
+.gname:hover { color: #4f46e5; text-decoration: underline; }
 .supbox { background: #fef3c7; border: 1px solid #fcd34d; color: #92400e; border-radius: 10px; padding: 10px 12px; font-size: 12px; margin-top: 6px; }
 h4 { margin: 12px 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: #9ca3af; }

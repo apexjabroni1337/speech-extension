@@ -2,7 +2,9 @@
 // All network calls to Supabase happen here; the content script and
 // popup talk to this worker via chrome.runtime messages.
 
-importScripts("config.js");
+// Chrome runs this as a service worker (importScripts); Firefox runs it as an
+// event page where config.js is preloaded via manifest "scripts".
+if (typeof CONFIG === "undefined") importScripts("config.js");
 
 const REST = (p) => `${CONFIG.SUPABASE_URL}/rest/v1${p}`;
 const AUTH = (p) => `${CONFIG.SUPABASE_URL}/auth/v1${p}`;
@@ -313,7 +315,12 @@ const handlers = {
       `/comments?user_id=eq.${rows[0].id}&is_deleted=eq.false&select=id&limit=1`,
       { count: true }
     );
-    return { profile: rows[0], commentCount: total, websiteUrl: siteUrl() };
+    let karma = 0;
+    try {
+      const scores = await rest(`/comment_feed?user_id=eq.${rows[0].id}&select=score&limit=1000`);
+      karma = scores.reduce((a, s) => a + (s.score || 0), 0);
+    } catch {}
+    return { profile: rows[0], commentCount: total, karma, websiteUrl: siteUrl() };
   },
 
   async GET_SUPPORT_URL() {
@@ -432,6 +439,49 @@ const handlers = {
     });
     await rest(`/group_members`, { method: "POST", body: { group_id: rows[0].id, user_id: id, role: "owner" } });
     return { group: rows[0] };
+  },
+
+  async GROUP_FEED({ groupId }) {
+    const posts = await rest(
+      `/comment_feed?group_id=eq.${groupId}&select=id,parent_id,user_id,body,is_deleted,created_at,username,display_name,score,is_supporter&order=created_at.desc&limit=100`
+    );
+    const myVotes = {};
+    const id = await uid();
+    if (id && posts.length) {
+      const ids = posts.map((c) => c.id).join(",");
+      const votes = await rest(`/votes?user_id=eq.${id}&comment_id=in.(${ids})&select=comment_id,value`);
+      for (const v of votes) myVotes[v.comment_id] = v.value;
+    }
+    return { posts, myVotes, myId: id };
+  },
+
+  async GROUP_POST({ groupId, body }) {
+    const id = await uid();
+    if (!id) throw new Error("Sign in to post.");
+    const text = (body || "").trim();
+    if (!text) throw new Error("Post is empty.");
+    const rows = await rest(`/comments`, {
+      method: "POST",
+      body: { group_id: groupId, body: text },
+      prefer: "return=representation"
+    });
+    const full = await rest(
+      `/comment_feed?id=eq.${rows[0].id}&select=id,parent_id,user_id,body,is_deleted,created_at,username,display_name,score,is_supporter`
+    );
+    return { post: full[0] };
+  },
+
+  async EDIT_COMMENT({ commentId, body }) {
+    const id = await uid();
+    if (!id) throw new Error("Not signed in.");
+    const text = (body || "").trim();
+    if (!text) throw new Error("Comment is empty.");
+    if (text.length > 5000) throw new Error("Too long (max 5000 chars).");
+    await rest(`/comments?id=eq.${commentId}&user_id=eq.${id}`, {
+      method: "PATCH",
+      body: { body: text }
+    });
+    return { body: text };
   },
 
   async GROUP_JOIN({ groupId }) {

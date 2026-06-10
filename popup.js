@@ -4,6 +4,7 @@ const app = document.getElementById("app");
 const who = document.getElementById("who");
 let auth = { signedIn: false };
 let tab = "feed";
+let currentGroup = null;
 
 function send(type, payload = {}) {
   return new Promise((resolve) => {
@@ -66,7 +67,8 @@ function render() {
   app.append(tabs);
   const pane = el("div", { class: "pad" });
   app.append(pane);
-  ({ feed: renderFeed, alerts: renderAlerts, friends: renderFriends, groups: renderGroups, interests: renderInterests, me: renderMe })[tab](pane);
+  const views = { feed: renderFeed, alerts: renderAlerts, friends: renderFriends, groups: (p) => currentGroup ? renderGroupThread(p) : renderGroups(p), interests: renderInterests, me: renderMe };
+  views[tab](pane);
 }
 
 function star(it) {
@@ -261,9 +263,71 @@ async function renderGroups(pane) {
     });
     pane.append(el("div", { class: "item row sb" },
       el("div", {},
-        el("div", { class: "name", text: g.name }),
+        el("div", {
+          class: "name gname", text: g.name,
+          onclick: () => { currentGroup = { id: g.id, name: g.name, joined, members }; render(); }
+        }),
         el("div", { class: "sub", text: `${members} member${members === 1 ? "" : "s"}${g.description ? " · " + g.description.slice(0, 60) : ""}` })),
       btn));
+  }
+}
+
+// ---------- group thread ----------
+
+async function renderGroupThread(pane) {
+  const g = currentGroup;
+  pane.append(el("div", { class: "row sb" },
+    el("button", { class: "lnk", text: "← All groups", onclick: () => { currentGroup = null; render(); } }),
+    el("span", { class: "muted", text: `${g.members} member${g.members === 1 ? "" : "s"}` })));
+  pane.append(el("h4", { text: g.name }));
+
+  if (g.joined) {
+    const ta = el("textarea", { placeholder: "Post to " + g.name + "…" });
+    const err = el("div", { class: "err" });
+    const btn = el("button", {
+      class: "btn", text: "Post",
+      onclick: async () => {
+        btn.disabled = true; err.textContent = "";
+        const r = await send("GROUP_POST", { groupId: g.id, body: ta.value });
+        btn.disabled = false;
+        if (r.error) { err.textContent = r.error; return; }
+        render();
+      }
+    });
+    pane.append(ta, el("div", { class: "row sb" }, el("span"), btn), err);
+  } else {
+    pane.append(el("div", { class: "muted", text: "Join this group (from the list) to post." }));
+  }
+
+  const holder = el("div", {}, el("div", { class: "empty", text: "Loading…" }));
+  pane.append(holder);
+  const res = await send("GROUP_FEED", { groupId: g.id });
+  holder.replaceChildren();
+  if (res.error) { holder.append(el("div", { class: "err", text: res.error })); return; }
+  if (!res.posts.length) { holder.append(el("div", { class: "empty", text: "No posts yet — start the first discussion." })); return; }
+
+  for (const p of res.posts) {
+    const myV = () => res.myVotes[p.id] || 0;
+    const score = el("span", { style: "font-weight:700; font-size:12px;", text: String(p.score) });
+    const up = el("button", { class: "lnk", text: "▲", onclick: () => vote(1) });
+    const dn = el("button", { class: "lnk", text: "▼", onclick: () => vote(-1) });
+    function paint() {
+      up.style.color = myV() === 1 ? "#16a34a" : "";
+      dn.style.color = myV() === -1 ? "#dc2626" : "";
+    }
+    paint();
+    async function vote(dir) {
+      const next = myV() === dir ? 0 : dir;
+      const r = await send("VOTE", { commentId: p.id, value: next });
+      if (!r.error) { res.myVotes[p.id] = next; score.textContent = String(r.score); paint(); }
+    }
+    holder.append(el("div", { class: "feeditem" },
+      el("div", { class: "muted" },
+        el("a", { class: "ulink", href: "#", onclick: (e) => { e.preventDefault(); openUrl(profileUrl(p.username)); }, text: p.display_name || p.username }),
+        star(p),
+        el("span", { text: ` @${p.username} · ${timeAgo(p.created_at)}` })),
+      el("div", { class: "b", text: p.body }),
+      el("div", { class: "row", style: "gap:2px;" }, up, score, dn)));
   }
 }
 

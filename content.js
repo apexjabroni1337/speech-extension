@@ -54,7 +54,8 @@
     href: location.href,
     loading: false,
     websiteUrl: "",
-    muted: new Set()
+    muted: new Set(),
+    sort: "new"
   };
 
   async function loadMuted() {
@@ -150,6 +151,7 @@
     .pp-meta { color: #9ca3af; font-size: 11px; margin-bottom: 12px; }
     a.btn { text-decoration: none; display: inline-block; }
     .star { font-size: 11px; cursor: default; }
+    .sort-on { color: #4f46e5 !important; font-weight: 700; }
     .supchip { display: inline-block; background: #fef3c7; color: #92400e; border: 1px solid #fcd34d;
       border-radius: 999px; padding: 1px 9px; font-size: 11px; font-weight: 700; margin: 4px 0 2px; }
   `;
@@ -221,9 +223,18 @@
     if (!state.auth.signedIn) body.append(authBox());
 
     // comments
-    const top = state.comments.filter((c) => !c.parent_id).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    const top = state.comments.filter((c) => !c.parent_id).sort((a, b) =>
+      state.sort === "top" ? (b.score || 0) - (a.score || 0) : new Date(b.created_at) - new Date(a.created_at)
+    );
     const replies = (id) => state.comments.filter((c) => c.parent_id === id);
 
+    if (top.length > 1) {
+      body.append(el("div", { class: "row", style: "gap:8px; margin-bottom:4px;" },
+        el("span", { class: "muted", text: "Sort:" }),
+        el("button", { class: "lnk" + (state.sort === "new" ? " sort-on" : ""), text: "New", onclick: () => { state.sort = "new"; renderPanel(); } }),
+        el("button", { class: "lnk" + (state.sort === "top" ? " sort-on" : ""), text: "Top", onclick: () => { state.sort = "top"; renderPanel(); } })
+      ));
+    }
     if (!top.length) {
       body.append(el("div", { class: "empty", text: "No comments here yet. Be the first to say something." }));
     }
@@ -334,6 +345,7 @@
       acts.append(el("button", { class: "lnk", text: "Reply", onclick: () => toggleReplyBox(node, c) }));
     }
     if (state.auth.signedIn && state.myId === c.user_id && !c.is_deleted) {
+      acts.append(el("button", { class: "lnk", text: "Edit", onclick: () => toggleEditBox(node, c) }));
       acts.append(el("button", {
         class: "lnk", text: "Delete",
         onclick: async () => {
@@ -413,7 +425,7 @@
       p.bio ? el("div", { class: "pp-bio", text: p.bio }) : null,
       el("div", {
         class: "pp-meta",
-        text: `${res.commentCount} comment${res.commentCount === 1 ? "" : "s"} · joined ${new Date(p.created_at).toLocaleDateString()}`
+        text: `${res.commentCount} comment${res.commentCount === 1 ? "" : "s"} · ${res.karma ?? 0} karma · joined ${new Date(p.created_at).toLocaleDateString()}`
       }),
       el("button", {
         class: "btn",
@@ -423,6 +435,27 @@
     );
     ppEl = el("div", { class: "pp-wrap", onclick: (e) => { if (e.target === ppEl) closeProfile(); } }, card);
     panel.append(ppEl);
+  }
+
+  function toggleEditBox(node, c) {
+    const existing = node.querySelector(".editbox");
+    if (existing) { existing.remove(); return; }
+    const ta = el("textarea", { style: "min-height:48px; margin-top:8px;" });
+    ta.value = c.body;
+    const err = el("div", { class: "err" });
+    const btn = el("button", {
+      class: "btn ghost", text: "Save", style: "margin-top:6px;",
+      onclick: async () => {
+        btn.disabled = true; err.textContent = "";
+        const r = await send("EDIT_COMMENT", { commentId: c.id, body: ta.value });
+        btn.disabled = false;
+        if (r.error) { err.textContent = r.error; return; }
+        c.body = r.body;
+        renderPanel();
+      }
+    });
+    node.append(el("div", { class: "editbox" }, ta, btn, err));
+    ta.focus();
   }
 
   function toggleReplyBox(node, c) {
