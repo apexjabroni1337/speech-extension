@@ -63,7 +63,11 @@ async function home() {
     api("/comment_feed?is_deleted=eq.false&select=*&order=created_at.desc&limit=50")
   ]);
   app.replaceChildren();
-  app.append(el("div", { class: "note", text: "This is the public window into SPEECH — what people are really saying about pages all over the web. Install the browser extension to join in." }));
+  app.append(el("div", { class: "hero" },
+    el("div", { class: "h1", text: "The comment section they can't delete." }),
+    el("div", { class: "hsub", text: "SPEECH puts an open comment thread on every page on the web — one the site owner doesn't control. Ranked by people, not advertisers." }),
+    el("a", { class: "dlbtn", href: "#/install", text: "Get the extension — it's free" })
+  ));
   if (pages.length) {
     app.append(el("h2", { text: "Recently discussed" }));
     for (const p of pages) {
